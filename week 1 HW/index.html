@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Titanic — EDA (single index.html)</title>
+  <!-- TF.js (для совместимости с tfjs-vis) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <!-- tfjs-vis для быстрых графиков в браузере -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.5.1/dist/tfjs-vis.umd.min.js"></script>
+  <!-- Papaparse — надёжный CSV-парсер (кавычки, запятые, типизация) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0f1221;
+      --card: #171a2f;
+      --text: #e7ebff;
+      --muted: #a8b0d9;
+      --accent: #7aa2ff;
+      --good: #43d17b;
+      --bad: #ff6b6b;
+      --warn: #ffc857;
+      --border: #2a2f52;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0; color: var(--text); background: radial-gradient(1200px 800px at 20% -10%, #1a2050, var(--bg));
+      font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+    }
+    .wrap { max-width: 1200px; margin: 24px auto 80px; padding: 0 16px; }
+    header {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+    }
+    .logo {
+      width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #5aa9ff, #a855f7);
+      display:flex; align-items:center; justify-content:center; font-weight:800; color:white; letter-spacing:1px;
+      box-shadow: 0 6px 20px rgba(90,169,255,.25);
+    }
+    h1 { font-size: 20px; margin: 0; }
+    .hint { color: var(--muted); margin-top: -2px; }
+    .grid {
+      display: grid; gap: 16px;
+      grid-template-columns: repeat(12, 1fr);
+    }
+    .card {
+      grid-column: span 12;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border: 1px solid var(--border);
+      border-radius: 16px; padding: 16px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.04);
+      backdrop-filter: blur(6px);
+    }
+    .card h2 { margin: 0 0 12px; font-size: 16px; }
+    .card .sub { color: var(--muted); margin: 2px 0 12px; }
+    .cols-6 { grid-column: span 6; }
+    .cols-4 { grid-column: span 4; }
+    .cols-8 { grid-column: span 8; }
+    .pill {
+      display:inline-block; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+      color: var(--muted); margin-right: 6px; margin-bottom: 6px;
+      background: rgba(255,255,255,0.03);
+    }
+    table {
+      width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums;
+      border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { text-align: left; color: var(--muted); background: rgba(255,255,255,0.03); }
+    tr:last-child td { border-bottom: none; }
+    .ok { color: var(--good); }
+    .bad { color: var(--bad); }
+    .btn {
+      appearance: none; border: 1px solid var(--border); color: var(--text);
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      padding: 8px 12px; border-radius: 12px; cursor: pointer; transition: .2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); border-color: #3a3f6d; }
+    .surfaces { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .surface { background: var(--card); border: 1px dashed var(--border); border-radius: 12px; padding: 8px; min-height: 260px; }
+    .footer-note { color: var(--muted); margin-top: 8px; font-size: 13px; }
+    @media (max-width: 920px) {
+      .cols-6, .cols-8, .cols-4 { grid-column: span 12; }
+      .surfaces { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">AI</div>
+      <div>
+        <h1>Titanic — EDA без сборок (single index.html)</h1>
+        <div class="hint">Положи <b>index.html</b>, <b>train.csv</b> и <b>test.csv</b> в одну папку. На GitHub Pages всё заработает сразу.</div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card cols-6" id="loadSection">
+        <h2>Загрузка данных</h2>
+        <div class="sub">Ожидаем файлы <code>train.csv</code> и <code>test.csv</code> в той же папке.</div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button class="btn" id="reloadBtn">Перезагрузить</button>
+          <span id="loadStatus" class="pill">Жду загрузку…</span>
+        </div>
+        <div class="footer-note">Если открываешь локально (file://), браузер может блокировать <code>fetch</code>. Используй GitHub Pages / любой статиκ-хостинг.</div>
+      </section>
+
+      <section class="card cols-6" id="shapeSection">
+        <h2>Размеры и колонки</h2>
+        <div class="sub">Сводка по датасетам</div>
+        <div id="shapes"></div>
+        <div id="columnsPills" style="margin-top:8px;"></div>
+      </section>
+
+      <section class="card cols-12" id="headSection">
+        <h2>Первые 5 строк (train.csv)</h2>
+        <div id="headTable"></div>
+      </section>
+
+      <section class="card cols-12" id="missingSection">
+        <h2>Пропуски по колонкам (train.csv)</h2>
+        <div id="missingTable"></div>
+      </section>
+
+      <section class="card cols-12" id="edaSection">
+        <h2>Выживаемость (train.csv)</h2>
+        <div class="sub">Overall, по полу (Sex), по классу (Pclass)</div>
+        <div class="surfaces">
+          <div class="surface" id="chartOverall"></div>
+          <div class="surface" id="chartSex"></div>
+          <div class="surface" id="chartPclass"></div>
+        </div>
+        <div style="margin-top:12px;">
+          <div id="tableSex" style="margin-top:8px;"></div>
+          <div id="tablePclass" style="margin-top:8px;"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // ---------- УТИЛИТЫ ----------
+    const fmtPct = x => (isFinite(x) ? (x*100).toFixed(1) + '%' : '—');
+    const el = (tag, props={}, ...children) => {
+      const node = document.createElement(tag);
+      Object.assign(node, props);
+      for (const ch of children) {
+        if (typeof ch === 'string') node.appendChild(document.createTextNode(ch));
+        else if (ch) node.appendChild(ch);
+      }
+      return node;
+    };
+    const clear = node => { while (node.firstChild) node.removeChild(node.firstChild); };
+
+    // Группировки
+    function valueCounts(rows, col) {
+      const map = new Map();
+      for (const r of rows) {
+        const key = r[col] == null || r[col] === '' ? '(missing)' : r[col];
+        map.set(key, (map.get(key) || 0) + 1);
+      }
+      return Array.from(map.entries()).map(([k, v]) => ({ key: k, count: v }));
+    }
+    function groupMean(rows, groupCol, targetCol) {
+      const agg = new Map();
+      for (const r of rows) {
+        const g = r[groupCol] == null || r[groupCol] === '' ? '(missing)' : r[groupCol];
+        const y = Number(r[targetCol]);
+        if (!isFinite(y)) continue;
+        const o = agg.get(g) || { n: 0, s: 0 };
+        o.n += 1; o.s += y;
+        agg.set(g, o);
+      }
+      return Array.from(agg.entries()).map(([g, o]) => ({ group: g, n: o.n, rate: o.s / o.n }));
+    }
+
+    // Рендер таблиц
+    function renderTable(container, rows, columns) {
+      clear(container);
+      const table = el('table');
+      const thead = el('thead');
+      const trh = el('tr');
+      for (const c of columns) trh.appendChild(el('th', {}, c));
+      thead.appendChild(trh);
+      table.appendChild(thead);
+
+      const tbody = el('tbody');
+      for (const r of rows) {
+        const tr = el('tr');
+        for (const c of columns) tr.appendChild(el('td', {}, (r[c] ?? '').toString()));
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      container.appendChild(table);
+    }
+
+    // Рендер «пилюль» с названиями колонок
+    function renderPills(container, cols) {
+      clear(container);
+      for (const c of cols) container.appendChild(el('span', { className: 'pill' }, c));
+    }
+
+    // Пропуски по колонкам
+    function missingByColumn(rows, cols) {
+      const out = [];
+      for (const c of cols) {
+        let miss = 0;
+        for (const r of rows) {
+          const v = r[c];
+          if (v === null || v === undefined || v === '') miss++;
+        }
+        out.push({ column: c, missing: miss, percent: miss / rows.length });
+      }
+      return out.sort((a,b)=>b.percent - a.percent);
+    }
+
+    // tfjs-vis helpers
+    function renderBar(container, series, title, xLabel='Категория', yLabel='Доля/значение') {
+      // series: [{name, values:[{x, y}]}] OR plain {x,y}[]
+      const surface = { name: title, tab: 'Charts', styles: { width: '100%', height: '260px' }, container: container };
+      if (Array.isArray(series)) {
+        tfvis.render.barchart(surface, series, {
+          xLabel, yLabel,
+          yAxisDomain: [0, 1],
+          height: 260
+        });
+      } else {
+        tfvis.render.barchart(surface, series, { xLabel, yLabel, height: 260 });
+      }
+    }
+
+    // ---------- ЗАГРУЗКА CSV ----------
+    async function loadCsv(path) {
+      const res = await fetch(path);
+      if (!res.ok) throw new Error(`Не удалось загрузить ${path}: ${res.status}`);
+      const text = await res.text();
+      const parsed = Papa.parse(text, {
+        header: true, dynamicTyping: true, skipEmptyLines: true,
+        // Корректно обрабатываем кавычки и запятые внутри полей (например, Name)
+        quoteChar: '"', escapeChar: '"'
+      });
+      if (parsed.errors && parsed.errors.length) {
+        console.warn('CSV parse errors:', parsed.errors.slice(0,3));
+      }
+      // Фильтруем полностью пустые строки (если вдруг)
+      const data = parsed.data.filter(row => Object.values(row).some(v => v !== '' && v != null));
+      return { data, columns: parsed.meta.fields || Object.keys(data[0] || {}) };
+    }
+
+    // ---------- ОСНОВНОЙ ПОТОК ----------
+    const UI = {
+      loadStatus: () => document.getElementById('loadStatus'),
+      shapes:     () => document.getElementById('shapes'),
+      columnsPills:() => document.getElementById('columnsPills'),
+      headTable:  () => document.getElementById('headTable'),
+      missingTable:() => document.getElementById('missingTable'),
+      chartOverall:() => document.getElementById('chartOverall'),
+      chartSex:   () => document.getElementById('chartSex'),
+      chartPclass:() => document.getElementById('chartPclass'),
+      tableSex:   () => document.getElementById('tableSex'),
+      tablePclass:() => document.getElementById('tablePclass')
+    };
+
+    let TRAIN = null, TEST = null;
+
+    async function main() {
+      UI.loadStatus().textContent = 'Загружаю CSV…';
+      try {
+        const [train, test] = await Promise.all([loadCsv('train.csv'), loadCsv('test.csv')]);
+        TRAIN = train; TEST = test;
+        UI.loadStatus().textContent = 'Готово ✅';
+
+        // Сводка форм
+        const shapesDiv = UI.shapes();
+        clear(shapesDiv);
+        shapesDiv.appendChild(el('div', {}, `train.csv — строк: ${TRAIN.data.length}, колонок: ${TRAIN.columns.length}`));
+        shapesDiv.appendChild(el('div', {}, `test.csv  — строк: ${TEST.data.length}, колонок: ${TEST.columns.length}`));
+
+        // Колонки (по train)
+        renderPills(UI.columnsPills(), TRAIN.columns);
+
+        // Head таблица
+        const headRows = TRAIN.data.slice(0, 5);
+        renderTable(UI.headTable(), headRows, TRAIN.columns);
+
+        // Пропуски
+        const miss = missingByColumn(TRAIN.data, TRAIN.columns)
+          .map(o => ({ Колонка: o.column, Пропуски: o.missing, 'Процент': fmtPct(o.percent) }));
+        renderTable(UI.missingTable(), miss, ['Колонка','Пропуски','Процент']);
+
+        // Выживаемость (только train, там есть Survived)
+        const n = TRAIN.data.length;
+        const surv = TRAIN.data.filter(r => Number(r.Survived) === 1).length;
+        const overallRate = surv / n;
+
+        // Общая доля
+        tfvis.visor().close(); // чтобы не всплывало лишнее окно
+        renderBar(UI.chartOverall(), [{x:'Survived=1', y: overallRate}], 'Доля выживших (overall)');
+
+        // По полу
+        const bySex = groupMean(TRAIN.data, 'Sex', 'Survived')
+          .map(o => ({ x: String(o.group), y: o.rate }));
+        renderBar(UI.chartSex(), bySex, 'Выживаемость по полу (Sex)');
+        const bySexTable = groupMean(TRAIN.data, 'Sex', 'Survived')
+          .map(o => ({ Пол: String(o.group), Объектов: o.n, 'Доля выживших': fmtPct(o.rate) }));
+        renderTable(UI.tableSex(), bySexTable, ['Пол','Объектов','Доля выживших']);
+
+        // По классу
+        const byClass = groupMean(TRAIN.data, 'Pclass', 'Survived')
+          .sort((a,b)=>a.group - b.group)
+          .map(o => ({ x: String(o.group), y: o.rate }));
+        renderBar(UI.chartPclass(), byClass, 'Выживаемость по классу (Pclass)');
+        const byClassTable = groupMean(TRAIN.data, 'Pclass', 'Survived')
+          .sort((a,b)=>a.group - b.group)
+          .map(o => ({ Класс: String(o.group), Объектов: o.n, 'Доля выживших': fmtPct(o.rate) }));
+        renderTable(UI.tablePclass(), byClassTable, ['Класс','Объектов','Доля выживших']);
+
+      } catch (err) {
+        console.error(err);
+        UI.loadStatus().textContent = 'Ошибка загрузки ❌';
+        alert('Ошибка: ' + err.message + '\nПроверь, что train.csv и test.csv лежат рядом с index.html и доступны по HTTP (GitHub Pages).');
+      }
+    }
+
+    document.getElementById('reloadBtn').addEventListener('click', main);
+    main();
+  </script>
+</body>
+</html>
