@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Telco Churn Classifier — TensorFlow.js (в браузере)</title>
+  <title>Telco Churn Classifier — TensorFlow.js (Browser)</title>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.5.1/dist/tfjs-vis.umd.min.js"></script>
@@ -19,7 +18,7 @@
     .card{grid-column:span 12;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));border:1px solid var(--border);border-radius:16px;padding:14px}
     .cols-6{grid-column:span 6}.cols-4{grid-column:span 4}.cols-8{grid-column:span 8}
     .btn{appearance:none;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text);border-radius:12px;padding:8px 12px;cursor:pointer}
-    input[type="number"],select{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:6px 8px}
+    input[type="number"],input[type="text"],select{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:6px 8px}
     .pill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:4px 10px;color:var(--muted);background:rgba(255,255,255,.03)}
     table{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:10px;overflow:hidden}
     th,td{padding:8px 10px;border-bottom:1px solid var(--border)}th{text-align:left;color:var(--muted);background:rgba(255,255,255,.03)}
@@ -27,6 +26,8 @@
     .kpis{display:flex;gap:12px;flex-wrap:wrap}
     .kpi{background:rgba(255,255,255,.03);border:1px solid var(--border);padding:10px 12px;border-radius:12px;min-width:160px}
     .hstack{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .section-title{display:flex;align-items:center;gap:8px}
+    .sep{height:1px;background:var(--border);margin:8px 0}
   </style>
 </head>
 <body>
@@ -34,71 +35,73 @@
     <header>
       <div class="logo">AI</div>
       <div>
-        <h1>Telco Churn Classifier — TensorFlow.js (в браузере)</h1>
-        <div class="muted">Загрузите CSV (IBM Telco Churn). Обучите простую MLP-модель прямо в браузере. Без сервера и установки.</div>
+        <h1>Telco Churn Classifier — TensorFlow.js (Browser)</h1>
+        <div class="muted">Load the IBM Telco Churn CSV, train a simple MLP, evaluate on a proper test split, and export predictions. Everything happens client-side.</div>
       </div>
     </header>
 
     <div class="grid">
       <section class="card cols-12">
-        <h2>1) Данные</h2>
+        <div class="section-title"><h2>1) Data</h2></div>
         <div class="hstack">
           <input id="fileCsv" type="file" accept=".csv,text/csv"/>
-          <button class="btn" id="btnLoad">Загрузить CSV</button>
-          <span id="statusLoad" class="pill">Жду файл…</span>
+          <button class="btn" id="btnLoad">Load CSV</button>
+          <span id="statusLoad" class="pill">Waiting for file…</span>
         </div>
         <div id="headPreview" style="margin-top:8px"></div>
       </section>
 
       <section class="card cols-6">
-        <h2>2) Настройки</h2>
+        <div class="section-title"><h2>2) Settings</h2></div>
         <div class="hstack">
-          <label>Тест % <input id="testSplit" type="number" min="10" max="40" value="20"/></label>
-          <label>Эпохи <input id="epochs" type="number" min="5" max="200" value="35"/></label>
-          <label>Батч <input id="batch" type="number" min="8" max="256" step="8" value="32"/></label>
-          <label>Слои: 
-            <select id="layers">
+          <label>Test % <input id="testSplit" type="number" min="10" max="40" value="20"/></label>
+          <label>Validation % (of train) <input id="valSplit" type="number" min="10" max="40" value="20"/></label>
+          <label>Epochs <input id="epochs" type="number" min="5" max="200" value="35"/></label>
+          <label>Batch <input id="batch" type="number" min="8" max="256" step="8" value="32"/></label>
+          <label>Hidden <select id="layers">
               <option value="32,16" selected>32 → 16</option>
               <option value="64,32">64 → 32</option>
               <option value="16,8">16 → 8</option>
             </select>
           </label>
-          <label><input id="balance" type="checkbox" checked/> Баланс классов (оверсэмпл меньшинства)</label>
-          <button class="btn" id="btnTrain">Запустить обучение</button>
-          <span id="statusTrain" class="pill">Готов</span>
+          <label><input id="balance" type="checkbox" checked/> Balance classes (oversample minority)</label>
+          <label>Seed <input id="seed" type="text" value="42" style="width:72px"/></label>
+          <button class="btn" id="btnTrain">Train</button>
+          <span id="statusTrain" class="pill">Idle</span>
         </div>
         <div id="trainVis" class="surface" style="margin-top:8px"></div>
       </section>
 
       <section class="card cols-6">
-        <h2>3) Оценка (hold-out)</h2>
+        <div class="section-title"><h2>3) Evaluation</h2><span class="muted">Validation for threshold, reporting on test</span></div>
         <div class="hstack">
-          <label>Порог <input id="thr" type="range" min="1" max="99" value="50"/></label>
+          <label>Threshold <input id="thr" type="range" min="1" max="99" value="50"/></label>
           <span id="thrVal" class="pill">0.50</span>
-          <button class="btn" id="btnBestThr">Лучший F1</button>
-          <button class="btn" id="btnSave">Сохранить модель</button>
+          <button class="btn" id="btnBestThr">Best F1 (validation)</button>
+          <button class="btn" id="btnSave">Save model</button>
         </div>
-        <div class="kpis" id="kpis" style="margin-top:8px"></div>
+        <div class="kpis" id="kpisVal" style="margin-top:8px"></div>
+        <div class="sep"></div>
+        <div class="kpis" id="kpisTest"></div>
         <div id="cm" class="surface" style="margin-top:8px"></div>
       </section>
 
       <section class="card cols-12">
-        <h2>4) Прогноз & Экспорт</h2>
+        <div class="section-title"><h2>4) Predict & Export</h2></div>
         <div class="hstack">
-          <button class="btn" id="btnPredict">Посчитать прогнозы для всего CSV</button>
-          <button class="btn" id="btnDownloadPred">Скачать предсказания (CSV)</button>
-          <span id="statusPred" class="pill">Пока нет предсказаний</span>
+          <button class="btn" id="btnPredict">Predict on full CSV</button>
+          <button class="btn" id="btnDownloadPred">Download predictions (CSV)</button>
+          <span id="statusPred" class="pill">No predictions yet</span>
         </div>
         <div id="tailPreview" style="margin-top:8px"></div>
       </section>
 
       <section class="card cols-12">
-        <h2>Примечания</h2>
+        <h2>Notes</h2>
         <ul>
-          <li>Препроцессинг: z-score для числовых (<code>tenure</code>, <code>MonthlyCharges</code>, <code>TotalCharges</code>), one-hot для категориальных. 
-              Значения “No internet/phone service” схлопываются в “No”. Пустые <code>TotalCharges</code> → 0.</li>
-          <li>Целевое: <code>Churn</code> (Yes/No). При включённом “Баланс классов” делаем оверсэмпл меньшинства.</li>
-          <li>Метрики: Accuracy, Precision, Recall, F1, ROC-AUC; матрица ошибок зависит от порога.</li>
+          <li>Preprocessing: z-score for <code>tenure</code>, <code>MonthlyCharges</code>, <code>TotalCharges</code>; one-hot for categorical features. "No internet/phone service" collapsed to "No". Empty <code>TotalCharges</code> for <code>tenure=0</code> treated as 0.</li>
+          <li>Splits: we use a <b>train/validation/test</b> pipeline (threshold picked on validation, metrics reported on test).</li>
+          <li>Metrics: Accuracy, Precision, Recall, F1, ROC-AUC; confusion matrix depends on threshold.</li>
         </ul>
       </section>
     </div>
@@ -121,9 +124,16 @@
       if(!rows.length) return '';
       const cols=Object.keys(rows[0]);
       const esc=v=>(''+v).replaceAll('"','""');
-      return [cols.join(','), ...rows.map(r=>cols.map(c=>`"${esc(r[c]??'')}"`).join(','))].join('\\n');
+      return [cols.join(','), ...rows.map(r=>cols.map(c=>`"${esc(r[c]??'')}"`).join(','))].join('\n');
     }
-    function shuffleInPlace(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+    // Seeded RNG for reproducible splits
+    function mulberry32(a){ return function(){ let t=a+=0x6D2B79F5; t=Math.imul(t^t>>>15, t|1); t^=t+Math.imul(t^t>>>7, t|61); return ((t^t>>>14)>>>0)/4294967296; } }
+    function seededShuffle(arr, seed){
+      const rnd=mulberry32(seed>>>0); const a=arr.slice();
+      for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+      return a;
+    }
 
     // ---------- data parsing ----------
     const NUM=['tenure','MonthlyCharges','TotalCharges'];
@@ -132,10 +142,8 @@
     function cleanRow(r){
       const rc={...r};
       const trim=v=> typeof v==='string'? v.trim(): v;
-      // collapse "No internet service" etc
       const collapse=['MultipleLines','OnlineSecurity','OnlineBackup','DeviceProtection','TechSupport','StreamingTV','StreamingMovies'];
       collapse.forEach(k=>{ const v=trim(rc[k]); if(v==='No internet service'||v==='No phone service') rc[k]='No'; });
-      // numeric
       rc.tenure = Number(trim(rc.tenure));
       rc.MonthlyCharges = Number(trim(rc.MonthlyCharges));
       const t = trim(rc.TotalCharges);
@@ -157,32 +165,26 @@
     const UI={
       file:()=>document.getElementById('fileCsv'), btnLoad:()=>document.getElementById('btnLoad'), statusLoad:()=>document.getElementById('statusLoad'),
       head:()=>document.getElementById('headPreview'),
-      testSplit:()=>document.getElementById('testSplit'), epochs:()=>document.getElementById('epochs'), batch:()=>document.getElementById('batch'),
-      layers:()=>document.getElementById('layers'), balance:()=>document.getElementById('balance'),
+      testSplit:()=>document.getElementById('testSplit'), valSplit:()=>document.getElementById('valSplit'), epochs:()=>document.getElementById('epochs'), batch:()=>document.getElementById('batch'),
+      layers:()=>document.getElementById('layers'), balance:()=>document.getElementById('balance'), seed:()=>document.getElementById('seed'),
       btnTrain:()=>document.getElementById('btnTrain'), statusTrain:()=>document.getElementById('statusTrain'), trainVis:()=>document.getElementById('trainVis'),
       thr:()=>document.getElementById('thr'), thrVal:()=>document.getElementById('thrVal'), btnBestThr:()=>document.getElementById('btnBestThr'),
-      kpis:()=>document.getElementById('kpis'), cm:()=>document.getElementById('cm'), btnSave:()=>document.getElementById('btnSave'),
+      kpisVal:()=>document.getElementById('kpisVal'), kpisTest:()=>document.getElementById('kpisTest'), cm:()=>document.getElementById('cm'), btnSave:()=>document.getElementById('btnSave'),
       btnPredict:()=>document.getElementById('btnPredict'), btnDownloadPred:()=>document.getElementById('btnDownloadPred'), statusPred:()=>document.getElementById('statusPred'),
       tail:()=>document.getElementById('tailPreview')
     };
-    const S={raw:[], cats:{}, mean:{}, std:{}, model:null, Xtr:null, ytr:null, Xte:null, yte:null, thr:0.5, preds:null};
+    const S={raw:[], cats:{}, mean:{}, std:{}, model:null, thr:0.5,
+             Xtr:null, ytr:null, Xval:null, yval:null, Xte:null, yte:null, predsVal:null, predsTest:null, predRows:null};
 
-    function showHead(rows){
-      table(UI.head(), rows.slice(0,5), Object.keys(rows[0]||{}));
-    }
+    function showHead(rows){ table(UI.head(), rows.slice(0,5), Object.keys(rows[0]||{})); }
 
     // ---------- preprocessing ----------
     function fitPreprocess(trainRows){
-      // categories per column
       S.cats={};
-      for(const c of CAT){
-        S.cats[c]=[...new Set(trainRows.map(r=>String(r[c])))];
-      }
-      // z-score params for numeric
+      for(const c of CAT){ S.cats[c]=[...new Set(trainRows.map(r=>String(r[c])))] }
       S.mean={}; S.std={};
       for(const c of NUM){
-        const v=trainRows.map(r=>Number(r[c]));
-        const n=v.length, m=v.reduce((s,x)=>s+x,0)/Math.max(1,n);
+        const v=trainRows.map(r=>Number(r[c])); const n=v.length, m=v.reduce((s,x)=>s+x,0)/Math.max(1,n);
         const sd=Math.sqrt(v.reduce((s,x)=>s+(x-m)**2,0)/Math.max(1,n-1))||1;
         S.mean[c]=m; S.std[c]=sd;
       }
@@ -191,39 +193,40 @@
       const x=[];
       for(const c of NUM){ x.push( (Number(r[c])-S.mean[c])/S.std[c] ); }
       for(const c of CAT){
-        const cats=S.cats[c];
-        const val=String(r[c]);
+        const cats=S.cats[c]; const val=String(r[c]);
         for(const u of cats) x.push( val===u ? 1 : 0 );
       }
       return x;
     }
     function buildXY(rows){
       const X=[], y=[];
-      for(const r of rows){
-        X.push(rowToX(r));
-        y.push(r.Churn==='Yes'?1:0);
-      }
+      for(const r of rows){ X.push(rowToX(r)); y.push(r.Churn==='Yes'?1:0); }
       return {X:tf.tensor2d(X), y:tf.tensor2d(y,[y.length,1])};
     }
 
-    function splitTrainTest(rows, testPct){
-      const idx=[...rows.keys()]; shuffleInPlace(idx);
+    // ---------- splits ----------
+    function splitTrainValTest(rows, testPct, valPct, seed){
+      const idx=[...rows.keys()];
+      const order=seededShuffle(idx, hashSeed(seed));
       const n=rows.length, nTest=Math.floor(n*testPct/100);
-      const test=idx.slice(0,nTest).map(i=>rows[i]);
-      const train=idx.slice(nTest).map(i=>rows[i]);
-      return {train,test};
+      const testIdx=order.slice(0,nTest), restIdx=order.slice(nTest);
+      const nVal=Math.floor(restIdx.length*valPct/100);
+      const valIdx=restIdx.slice(0,nVal), trainIdx=restIdx.slice(nVal);
+      const take=(ids)=>ids.map(i=>rows[i]);
+      return {train:take(trainIdx), val:take(valIdx), test:take(testIdx)};
+    }
+    function hashSeed(s){
+      try{
+        if(!s) return 42;
+        let h=0; for(let i=0;i<s.length;i++){ h=(h*31 + s.charCodeAt(i))|0; } return (h>>>0);
+      }catch(e){ return 42; }
     }
 
-    function oversample(trainRows){
-      const yes=trainRows.filter(r=>r.Churn==='Yes');
-      const no=trainRows.filter(r=>r.Churn!=='Yes');
-      if(yes.length===0||no.length===0) return trainRows;
-      const target=no.length;
-      const ext=[];
-      while(yes.length+ext.length < target){
-        ext.push( yes[Math.floor(Math.random()*yes.length)] );
-      }
-      return shuffleInPlace(trainRows.concat(ext));
+    function oversample(rows){
+      const yes=rows.filter(r=>r.Churn==='Yes'), no=rows.filter(r=>r.Churn!=='Yes');
+      if(yes.length===0||no.length===0) return rows;
+      const ext=[]; while(yes.length+ext.length<no.length){ ext.push( yes[Math.floor(Math.random()*yes.length)] ); }
+      return seededShuffle(rows.concat(ext), 123);
     }
 
     // ---------- metrics ----------
@@ -236,16 +239,20 @@
       return {tp,tn,fp,fn,acc,prec,rec,f1};
     }
     function rocAuc(yTrue, yProb){
-      const pairs=yProb.map((p,i)=>[p,yTrue[i]]).sort((a,b)=>b[0]-a[0]);
-      let tp=0, fp=0; const P=yTrue.reduce((s,t)=>s+t,0), N=yTrue.length-P;
-      let auc=0, prevFpr=0, prevTpr=0;
-      for(const [p,t] of pairs){
+      const pairs=yProb.map((p,i)=>({p, t:yTrue[i]})).sort((a,b)=>b.p-a.p);
+      const P=yTrue.reduce((s,v)=>s+(v?1:0),0), N=yTrue.length-P;
+      let tp=0, fp=0, prev=-Infinity;
+      const pts=[{fpr:0, tpr:0}];
+      for(const {p,t} of pairs){
+        if(p!==prev){ pts.push({fpr:fp/(N||1), tpr:tp/(P||1)}); prev=p; }
         if(t===1) tp++; else fp++;
-        const tpr=tp/(P||1), fpr=fp/(N||1);
-        auc += (fpr-prevFpr)*(tpr+prevTpr)/2;
-        prevFpr=fpr; prevTpr=tpr;
       }
-      return 1-auc; // integrate high->low
+      pts.push({fpr:fp/(N||1), tpr:tp/(P||1)});
+      let auc=0; for(let i=1;i<pts.length;i++){
+        const x1=pts[i-1].fpr, x2=pts[i].fpr, y1=pts[i-1].tpr, y2=pts[i].tpr;
+        auc += (x2-x1)*(y1+y2)/2;
+      }
+      return auc;
     }
     function bestF1Threshold(yTrue,yProb){
       let best=0.5, bestF1=-1;
@@ -254,6 +261,24 @@
         if(m.f1>bestF1){bestF1=m.f1; best=t;}
       }
       return {thr:best, f1:bestF1};
+    }
+    function renderKPIs(container, m, auc, title){
+      const fmt=(x)=> (isFinite(x)? (x*100).toFixed(1)+'%' : '—');
+      clear(container);
+      container.append(el('div',{className:'kpi'}, el('div',{className:'muted'}, title||'Set'), el('div',{style:'font-size:12px'}, '')));
+      const items=[['Accuracy',fmt(m.acc)],['Precision',fmt(m.prec)],['Recall',fmt(m.rec)],['F1',fmt(m.f1)],['ROC-AUC',fmt(auc)]];
+      for(const [k,v] of items){
+        container.append(el('div',{className:'kpi'}, el('div',{className:'muted'},k), el('div',{style:'font-size:20px;font-weight:700'}, v)));
+      }
+    }
+    function renderCM(m){
+      clear(UI.cm());
+      const tbl=el('table'), trh=el('tr');
+      ['','Pred 0','Pred 1'].forEach(s=>trh.appendChild(el('th',{},s))); tbl.appendChild(el('thead',{} , trh));
+      const b=el('tbody');
+      const r0=el('tr',{}, el('td',{},'True 0'), el('td',{}, String(m.tn)), el('td',{}, String(m.fp)));
+      const r1=el('tr',{}, el('td',{},'True 1'), el('td',{}, String(m.fn)), el('td',{}, String(m.tp)));
+      b.append(r0,r1); tbl.appendChild(b); UI.cm().append(tbl);
     }
 
     // ---------- model ----------
@@ -269,104 +294,99 @@
       return model;
     }
 
-    function renderKPIs(m, auc){
-      const fmt=(x)=> (isFinite(x)? (x*100).toFixed(1)+'%' : '—');
-      clear(UI.kpis());
-      const items=[
-        ['Accuracy', fmt(m.acc)], ['Precision', fmt(m.prec)], ['Recall', fmt(m.rec)], ['F1', fmt(m.f1)], ['ROC-AUC', fmt(auc)]
-      ];
-      items.forEach(([k,v])=> UI.kpis().append(el('div',{className:'kpi'}, el('div',{className:'muted'},k), el('div',{style:'font-size:20px;font-weight:700'}, v))));
-    }
-    function renderCM(m){
-      clear(UI.cm());
-      const tbl=el('table'), trh=el('tr');
-      ['','Предсказано 0','Предсказано 1'].forEach(s=>trh.appendChild(el('th',{},s))); tbl.appendChild(el('thead',{} , trh));
-      const b=el('tbody');
-      const r0=el('tr',{}, el('td',{},'Истинно 0'), el('td',{}, String(m.tn)), el('td',{}, String(m.fp)));
-      const r1=el('tr',{}, el('td',{},'Истинно 1'), el('td',{}, String(m.fn)), el('td',{}, String(m.tp)));
-      b.append(r0,r1); tbl.appendChild(b); UI.cm().append(tbl);
-    }
-
     // ---------- wire up ----------
     UI.btnLoad().addEventListener('click', async()=>{
-      const f=UI.file().files[0]; if(!f){ UI.statusLoad().textContent='Выберите CSV'; return; }
-      UI.statusLoad().textContent='Парсинг…';
+      const f=UI.file().files[0]; if(!f){ UI.statusLoad().textContent='Please select CSV'; return; }
+      UI.statusLoad().textContent='Parsing…';
       const {rows}=await parseCSV(f);
       S.raw=rows;
-      UI.statusLoad().textContent=`Загружено ✓ (${rows.length} строк)`;
+      UI.statusLoad().textContent=`Loaded ✓ (${rows.length} rows)`;
       showHead(rows);
     });
 
     UI.thr().addEventListener('input', ()=>{
       S.thr = Number(UI.thr().value)/100;
       UI.thrVal().textContent=S.thr.toFixed(2);
-      if(!S.preds || !S.yte) return;
-      const m=cmMetrics(S.yte, S.preds, S.thr);
-      const auc=rocAuc(S.yte, S.preds);
-      renderKPIs(m, auc); renderCM(m);
+      if(!S.predsTest || !S.yte) return;
+      const mT=cmMetrics(S.yte, S.predsTest, S.thr);
+      const aucT=rocAuc(S.yte, S.predsTest);
+      renderKPIs(UI.kpisTest(), mT, aucT, 'Test (reporting)');
+      renderCM(mT);
     });
 
     UI.btnTrain().addEventListener('click', async()=>{
-      if(S.raw.length===0){ alert('Сначала загрузите CSV'); return; }
-      UI.statusTrain().textContent='Подготовка…';
-      // split
-      const {train, test}=splitTrainTest(S.raw, Number(UI.testSplit().value));
-      const trBalanced = UI.balance().checked ? oversample(train) : train;
-      fitPreprocess(trBalanced);
-      // build XY
-      const XYtr=buildXY(trBalanced), XYte=buildXY(test);
-      S.Xtr=XYtr.X; S.ytr=XYtr.y; S.Xte=XYte.X; S.yte=Array.from(await XYte.y.data()).map(v=>Number(v));
-      // model
+      if(S.raw.length===0){ alert('Load CSV first'); return; }
+      UI.statusTrain().textContent='Preparing…';
+      const seedStr=UI.seed().value||'42';
+      const {train, val, test}=splitTrainValTest(S.raw, Number(UI.testSplit().value), Number(UI.valSplit().value), seedStr);
+      const trainBalanced = UI.balance().checked ? oversample(train) : train;
+      fitPreprocess(trainBalanced);
+
+      const XYtr=buildXY(trainBalanced), XYval=buildXY(val), XYte=buildXY(test);
+      S.Xtr=XYtr.X; S.ytr=XYtr.y; S.Xval=XYval.X; S.yval=Array.from(await XYval.y.data()).map(v=>Number(v)); S.Xte=XYte.X; S.yte=Array.from(await XYte.y.data()).map(v=>Number(v));
+
       const inputDim=S.Xtr.shape[1];
       S.model=buildModel(inputDim, UI.layers().value);
 
-      // train
-      UI.statusTrain().textContent='Обучение…';
-      const surface={name:'Обучение', tab:'Charts'};
-      const hist=await S.model.fit(S.Xtr, S.ytr, {
+      UI.statusTrain().textContent='Training…';
+      const surface={name:'Training', tab:'Charts'};
+      await S.model.fit(S.Xtr, S.ytr, {
         epochs:Number(UI.epochs().value),
         batchSize:Number(UI.batch().value),
         shuffle:true,
-        validationData:[S.Xte, tf.tensor2d(S.yte,[S.yte.length,1])],
+        validationData:[S.Xval, tf.tensor2d(S.yval,[S.yval.length,1])],
         callbacks: tfvis.show.fitCallbacks(surface, ['loss','val_loss','acc','val_acc'], {callbacks:['onEpochEnd']})
       });
-      UI.statusTrain().textContent='Обучено ✓';
+      UI.statusTrain().textContent='Trained ✓';
 
-      // evaluate
-      const probs = Array.from(await S.model.predict(S.Xte).data());
-      S.preds = probs;
-      // best F1
-      const b=bestF1Threshold(S.yte, probs);
+      // Predictions
+      S.predsVal = Array.from(await S.model.predict(S.Xval).data());
+      S.predsTest = Array.from(await S.model.predict(S.Xte).data());
+
+      // Best threshold on validation
+      const b=bestF1Threshold(S.yval, S.predsVal);
       S.thr=b.thr; UI.thr().value = Math.round(S.thr*100); UI.thrVal().textContent=S.thr.toFixed(2);
-      const m=cmMetrics(S.yte, probs, S.thr);
-      const auc=rocAuc(S.yte, probs);
-      renderKPIs(m, auc); renderCM(m);
-      UI.statusPred().textContent='Готово к прогнозу всего CSV';
+
+      const mV=cmMetrics(S.yval, S.predsVal, S.thr);
+      const aucV=rocAuc(S.yval, S.predsVal);
+      renderKPIs(UI.kpisVal(), mV, aucV, 'Validation (threshold search)');
+
+      const mT=cmMetrics(S.yte, S.predsTest, S.thr);
+      const aucT=rocAuc(S.yte, S.predsTest);
+      renderKPIs(UI.kpisTest(), mT, aucT, 'Test (reporting)');
+      renderCM(mT);
+      UI.statusPred().textContent='Ready to predict on full CSV';
     });
 
     UI.btnBestThr().addEventListener('click', ()=>{
-      if(!S.preds){ return; }
-      const b=bestF1Threshold(S.yte, S.preds);
+      if(!S.predsVal){ return; }
+      const b=bestF1Threshold(S.yval, S.predsVal);
       S.thr=b.thr; UI.thr().value = Math.round(S.thr*100); UI.thrVal().textContent=S.thr.toFixed(2);
-      const m=cmMetrics(S.yte, S.preds, S.thr);
-      const auc=rocAuc(S.yte, S.preds);
-      renderKPIs(m, auc); renderCM(m);
+      // Refresh test metrics with new thr
+      const mT=cmMetrics(S.yte, S.predsTest, S.thr);
+      const aucT=rocAuc(S.yte, S.predsTest);
+      renderKPIs(UI.kpisTest(), mT, aucT, 'Test (reporting)');
+      renderCM(mT);
+      // Refresh val KPIs as well
+      const mV=cmMetrics(S.yval, S.predsVal, S.thr);
+      const aucV=rocAuc(S.yval, S.predsVal);
+      renderKPIs(UI.kpisVal(), mV, aucV, 'Validation (threshold search)');
     });
 
     UI.btnPredict().addEventListener('click', async()=>{
-      if(!S.model){ alert('Сначала обучите модель'); return; }
+      if(!S.model){ alert('Train the model first'); return; }
       const preds=[];
       for(const r of S.raw){
         const p=await tf.tidy(()=> S.model.predict(tf.tensor2d([rowToX(r)])).dataSync()[0] );
         preds.push({customerID:r.customerID, prob: p, pred: (p>=S.thr ? 'Yes':'No')});
       }
       S.predRows = S.raw.map((r,i)=> ({...r, Pred_Prob: preds[i].prob.toFixed(4), Pred_Label: preds[i].pred}) );
-      UI.statusPred().textContent=`Предсказано ✓ (${S.predRows.length} строк)`;
+      UI.statusPred().textContent=`Predicted ✓ (${S.predRows.length} rows)`;
       table(UI.tail(), S.predRows.slice(-5), Object.keys(S.predRows[0]));
     });
 
     UI.btnDownloadPred().addEventListener('click', ()=>{
-      if(!S.predRows){ alert('Нет предсказаний'); return; }
+      if(!S.predRows){ alert('No predictions yet'); return; }
       const csv=toCSV(S.predRows);
       const blob=new Blob([csv], {type:'text/csv'});
       const url=URL.createObjectURL(blob); const a=document.createElement('a');
@@ -374,8 +394,7 @@
     });
 
     UI.btnSave().addEventListener('click', async()=>{
-      if(!S.model){ alert('Сначала обучите модель'); return; }
-      // Save model and preprocessing params together
+      if(!S.model){ alert('Train the model first'); return; }
       const prep={cats:S.cats, mean:S.mean, std:S.std, thr:S.thr, num:NUM, cat:CAT, drop:DROP};
       const blob=new Blob([JSON.stringify(prep,null,2)],{type:'application/json'});
       const url=URL.createObjectURL(blob); const a=document.createElement('a');
