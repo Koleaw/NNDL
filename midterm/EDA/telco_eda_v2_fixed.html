@@ -1,0 +1,334 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Telco Churn — EDA v2 (Deep, Fixed)</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.5.1/dist/tfjs-vis.umd.min.js"></script>
+  <style>
+    :root{--bg:#0e1124;--card:#171a2f;--text:#e7ebff;--muted:#a8b0d9;--border:#2a2f52}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(1200px 800px at 20% -10%,#1a2050,var(--bg));color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
+    .wrap{max-width:1240px;margin:24px auto 90px;padding:0 16px} header{display:flex;gap:16px;align-items:center;margin-bottom:16px}
+    .logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#5aa9ff,#a855f7);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+    h1{margin:0;font-size:20px}.hint{color:var(--muted);margin-top:-2px}
+    .grid{display:grid;gap:16px;grid-template-columns:repeat(12,1fr)}
+    .card{grid-column:span 12;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));border:1px solid var(--border);border-radius:16px;padding:16px}
+    .card h2{margin:0 0 10px;font-size:16px}.sub{color:var(--muted);margin:2px 0 10px}
+    .cols-6{grid-column:span 6}
+    .pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:rgba(255,255,255,.03);margin:0 6px 6px 0}
+    table{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+    th,td{padding:8px 10px;border-bottom:1px solid var(--border)} th{text-align:left;color:var(--muted);background:rgba(255,255,255,.03)} tr:last-child td{border-bottom:none}
+    .surfaces{display:grid;grid-template-columns:repeat(3,1fr);gap:12px} .surface{min-height:260px;border:1px dashed var(--border);border-radius:12px;padding:8px}
+    .btn{appearance:none;border:1px solid var(--border);color:var(--text);background:rgba(255,255,255,.03);padding:8px 12px;border-radius:12px;cursor:pointer}
+    .bullets{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:10px;margin-top:8px}
+    @media(max-width:1000px){.cols-6{grid-column:span 12}.surfaces{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">AI</div>
+      <div>
+        <h1>Telco Customer Churn — EDA v2 (deeper, fixed)</h1>
+        <div class="hint">Upload CSV → shapes, dtypes, missing, duplicates, distributions, associations, segments, class weights.</div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <h2>1) Data Load</h2>
+        <div class="sub">Pick the CSV and click Load.</div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <input id="fileInput" type="file" accept=".csv,text/csv"/>
+          <button class="btn" id="loadBtn" type="button">Load CSV</button>
+          <span id="loadStatus" class="pill">Waiting for file…</span>
+        </div>
+      </section>
+
+      <section class="card cols-6">
+        <h2>2) Shapes, Columns & Dtypes</h2>
+        <div id="shapes"></div>
+        <div id="typesTable" style="margin-top:8px;"></div>
+      </section>
+
+      <section class="card cols-6">
+        <h2>3) Duplicates & Quality Checks</h2>
+        <div id="quality"></div>
+      </section>
+
+      <section class="card">
+        <h2>4) Missing Values</h2>
+        <div id="missingTable"></div>
+      </section>
+
+      <section class="card">
+        <h2>5) Distributions (numeric)</h2>
+        <div class="surfaces">
+          <div class="surface" id="histTenure"></div>
+          <div class="surface" id="histMonthly"></div>
+          <div class="surface" id="histTotal"></div>
+        </div>
+        <div id="numSummary" style="margin-top:8px;"></div>
+      </section>
+
+      <section class="card">
+        <h2>6) Churn Insights (categorical & bins)</h2>
+        <div class="surfaces">
+          <div class="surface" id="chartBalance"></div>
+          <div class="surface" id="chartContract"></div>
+          <div class="surface" id="chartInternet"></div>
+        </div>
+        <div class="surfaces" style="margin-top:8px;">
+          <div class="surface" id="chartSenior"></div>
+          <div class="surface" id="chartPaperless"></div>
+          <div class="surface" id="chartPayment"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>7) Associations with Churn</h2>
+        <div class="sub">Numeric: point-biserial | Categorical: Cramér’s V</div>
+        <div id="assocTable"></div>
+      </section>
+
+      <section class="card">
+        <h2>8) Top Risk Segments (Contract × Tenure bins)</h2>
+        <div id="segmentsTable"></div>
+      </section>
+
+      <section class="card">
+        <h2>9) Class Imbalance & Recommended class weights</h2>
+        <div id="imbalance"></div>
+      </section>
+
+      <section class="card">
+        <h2>10) Auto Summary & Export</h2>
+        <div id="summaryBullets" class="bullets"></div>
+        <div style="margin-top:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <button class="btn" id="downloadJson" type="button">Download EDA summary (JSON)</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const el=(t,p={},...kids)=>{const n=document.createElement(t);Object.assign(n,p);kids.forEach(k=>n.append(k?.nodeType?k:document.createTextNode(k??'')));return n};
+    const clear=n=>{while(n.firstChild)n.removeChild(n.firstChild)};
+    const fmtPct=x=>(isFinite(x)?(x*100).toFixed(1)+'%':'—');
+
+    function table(container, rows, cols){
+      clear(container); const tbl=el('table'), thead=el('thead'), trh=el('tr');
+      cols.forEach(c=>trh.appendChild(el('th',{},c))); thead.appendChild(trh); tbl.appendChild(thead);
+      const tb=el('tbody'); rows.forEach(r=>{const tr=el('tr'); cols.forEach(c=>tr.appendChild(el('td',{},String(r[c]??'')))); tb.appendChild(tr);}); tbl.appendChild(tb);
+      container.appendChild(tbl);
+    }
+    function renderBar(container, dataXY, opts={}){
+      const data=dataXY.map(d=>({index:String(d.x), value:Number(d.y)}));
+      const options=Object.assign({xLabel:'Category', yLabel:'Value', yAxisDomain:[0,1], height:260}, opts);
+      clear(container); tfvis.render.barchart(container, data, options);
+    }
+    function renderHist(container, values, bins=20){
+      const v=values.filter(x=>isFinite(x)); if(!v.length){ clear(container); container.textContent='No data'; return; }
+      const min=Math.min(...v), max=Math.max(...v);
+      const step=(max-min)/bins || 1;
+      const counts=new Array(bins).fill(0);
+      v.forEach(x=>{ let idx=Math.floor((x-min)/step); if(idx>=bins) idx=bins-1; if(idx<0) idx=0; counts[idx]++; });
+      const data=counts.map((c,i)=>({x:(min+i*step).toFixed(1), y:c/v.length}));
+      renderBar(container, data, {xLabel:'Value (bin start)', yLabel:'Share', yAxisDomain:[0,Math.max(...data.map(d=>d.y))*1.2]});
+    }
+
+    const numCols=['tenure','MonthlyCharges','TotalCharges'];
+    const catCols=['gender','SeniorCitizen','Partner','Dependents','PhoneService','MultipleLines','InternetService','OnlineSecurity','OnlineBackup','DeviceProtection','TechSupport','StreamingTV','StreamingMovies','Contract','PaperlessBilling','PaymentMethod'];
+    function tenureBin(t){ if(!isFinite(t)) return '(missing)'; if(t<6) return '0–5'; if(t<12) return '6–11'; if(t<24) return '12–23'; if(t<36) return '24–35'; if(t<60) return '36–59'; return '60+'; }
+
+    function parseCsvFile(file){
+      return new Promise((res,rej)=>{
+        Papa.parse(file,{header:true,dynamicTyping:false,skipEmptyLines:true,quoteChar:'"',escapeChar:'"',
+          complete:r=>{
+            let data=(r.data||[]).filter(row=>Object.values(row).some(v=>v!==''&&v!=null));
+            data=data.map(row=>{
+              const rc={...row};
+              const norm=(v)=> typeof v==='string' ? v.trim() : v;
+              rc.TotalCharges = (()=>{const t=norm(rc.TotalCharges); const num=Number(t); return isFinite(num)?num:null;})();
+              rc.MonthlyCharges = Number(norm(rc.MonthlyCharges));
+              rc.tenure = Number(norm(rc.tenure));
+              const collapse=['MultipleLines','OnlineSecurity','OnlineBackup','DeviceProtection','TechSupport','StreamingTV','StreamingMovies'];
+              collapse.forEach(k=>{ const v=norm(rc[k]); if(v==='No internet service'||v==='No phone service') rc[k]='No'; });
+              if(rc.Churn!=null) rc.Churn = String(norm(rc.Churn));
+              return rc;
+            });
+            const columns=r.meta?.fields || Object.keys(data[0]||{});
+            res({data,columns});
+          }, error:rej
+        });
+      });
+    }
+
+    const UI={
+      file:()=>document.getElementById('fileInput'), loadBtn:()=>document.getElementById('loadBtn'), loadStatus:()=>document.getElementById('loadStatus'),
+      shapes:()=>document.getElementById('shapes'), typesTable:()=>document.getElementById('typesTable'), quality:()=>document.getElementById('quality'),
+      missingTable:()=>document.getElementById('missingTable'),
+      histTenure:()=>document.getElementById('histTenure'), histMonthly:()=>document.getElementById('histMonthly'), histTotal:()=>document.getElementById('histTotal'),
+      numSummary:()=>document.getElementById('numSummary'),
+      chartBalance:()=>document.getElementById('chartBalance'), chartContract:()=>document.getElementById('chartContract'),
+      chartInternet:()=>document.getElementById('chartInternet'), chartSenior:()=>document.getElementById('chartSenior'),
+      chartPaperless:()=>document.getElementById('chartPaperless'), chartPayment:()=>document.getElementById('chartPayment'),
+      assocTable:()=>document.getElementById('assocTable'), segmentsTable:()=>document.getElementById('segmentsTable'),
+      imbalance:()=>document.getElementById('imbalance'),
+      summary:()=>document.getElementById('summaryBullets'), downloadJson:()=>document.getElementById('downloadJson')
+    };
+
+    function numericSummary(values){
+      const v=values.filter(x=>isFinite(x)).sort((a,b)=>a-b);
+      const n=v.length, mean=v.reduce((s,x)=>s+x,0)/Math.max(1,n);
+      const q=(p)=> v[Math.min(n-1, Math.max(0, Math.floor(p*(n-1))))] ?? null;
+      const std=Math.sqrt(v.reduce((s,x)=>s+(x-mean)**2,0)/Math.max(1,n-1));
+      return {n, min:v[0], q1:q(0.25), median:q(0.5), q3:q(0.75), max:v[n-1], mean, std};
+    }
+    function pointBiserial(x, y){
+      const n=x.length; if(!n) return NaN;
+      let mx=0,my=0; for(let i=0;i<n;i++){ mx+=x[i]; my+=y[i]; } mx/=n; my/=n;
+      let sxx=0; for(let i=0;i<n;i++){ sxx+=(x[i]-mx)**2; } const sx=Math.sqrt(sxx/(n-1)||1e-12);
+      let cov=0; for(let i=0;i<n;i++){ cov+=(x[i]-mx)*(y[i]-my); } cov/= (n-1);
+      return cov/(sx*Math.sqrt(my*(1-my))||1e-12);
+    }
+    function cramersV(cat, y){
+      const cats=[...new Set(cat)];
+      const n=cat.length; const k=cats.length;
+      const map=new Map(cats.map(c=>[c,{n0:0,n1:0}]));
+      for(let i=0;i<n;i++){ const o=map.get(cat[i]); if(y[i]===1) o.n1++; else o.n0++; }
+      let chi2=0; const n1=y.reduce((s,t)=>s+t,0), n0=n-n1;
+      for(const {n0:n0c, n1:n1c} of map.values()){
+        const e1=(n1/n)*(n0c+n1c); const e0=(n0/n)*(n0c+n1c);
+        chi2 += ( (n1c-e1)**2/(e1||1e-12) ) + ( (n0c-e0)**2/(e0||1e-12) );
+      }
+      return Math.sqrt(chi2/(n*(Math.min(k-1,1)||1)));
+    }
+    function groupMean(rows, groupCol, targetCol){
+      const agg=new Map();
+      for(const r of rows){
+        const g=(r[groupCol]==null||r[groupCol]==='')?'(missing)':String(r[groupCol]);
+        const y=(String(r[targetCol])==='Yes')?1:0;
+        const o=agg.get(g)||{n:0,s:0}; o.n+=1; o.s+=y; agg.set(g,o);
+      }
+      return Array.from(agg.entries()).map(([g,o])=>({group:g,n:o.n,rate:o.s/o.n}));
+    }
+
+    UI.loadBtn().addEventListener('click', async()=>{
+      const file=UI.file().files[0];
+      if(!file){ UI.loadStatus().textContent='Please select CSV'; return; }
+      UI.loadStatus().textContent='Parsing…';
+      try{
+        const parsed=await parseCsvFile(file);
+        const rows=parsed.data, cols=parsed.columns; UI.loadStatus().textContent='Loaded ✓';
+
+        // Shapes & dtypes
+        clear(UI.shapes()); UI.shapes().append(el('div',{},`rows: ${rows.length}, columns: ${cols.length}`));
+        const types = cols.map(c=>{
+          const sample = rows[0]?.[c];
+          const kind = (numCols.includes(c) || typeof sample==='number') ? 'numeric' : (c==='Churn'?'target':'categorical');
+          return {Column:c, Type:kind};
+        });
+        table(UI.typesTable(), types, ['Column','Type']);
+
+        // Duplicates & quality
+        const ids = rows.map(r=>r.customerID); const uniq = new Set(ids);
+        const dupCount = rows.length - uniq.size;
+        const totalChargesZeroTenurePos = rows.filter(r=>Number(r.tenure)>0 && Number(r.TotalCharges)===0).length;
+        const monthZero = rows.filter(r=>Number(r.MonthlyCharges)===0).length;
+        clear(UI.quality());
+        UI.quality().append(
+          el('div',{}, `Unique customerID: ${uniq.size} / ${rows.length} (duplicates: ${dupCount})`),
+          el('div',{}, `Quality checks: TotalCharges=0 with tenure>0 → ${totalChargesZeroTenurePos}; MonthlyCharges=0 → ${monthZero}`)
+        );
+
+        // Missing
+        const miss=cols.map(c=>{
+          let m=0; for(const r of rows){ const v=r[c]; if(v===''||v==null) m++; } return {Column:c, Missing:m, Percent: (rows.length? (m/rows.length):0)};
+        }).sort((a,b)=>b.Percent-a.Percent).map(o=>({Column:o.Column, Missing:o.Missing, Percent:(o.Percent*100).toFixed(1)+'%'}));
+        table(UI.missingTable(), miss, ['Column','Missing','Percent']);
+
+        // Distributions
+        renderHist(UI.histTenure(), rows.map(r=>Number(r.tenure)));
+        renderHist(UI.histMonthly(), rows.map(r=>Number(r.MonthlyCharges)));
+        renderHist(UI.histTotal(), rows.map(r=>Number(r.TotalCharges)));
+        const numSummRows = numCols.map(c=>{
+          const s=numericSummary(rows.map(r=>Number(r[c])));
+          return {Feature:c, Count:s.n, Mean:s.mean?.toFixed(2), Std:s.std?.toFixed(2), Min:s.min, Q1:s.q1, Median:s.median, Q3:s.q3, Max:s.max};
+        });
+        table(UI.numSummary(), numSummRows, ['Feature','Count','Mean','Std','Min','Q1','Median','Q3','Max']);
+
+        // Churn insights
+        const n=rows.length, pos=rows.filter(r=>r.Churn==='Yes').length;
+        renderBar(UI.chartBalance(), [{x:'No',y:(n-pos)/n},{x:'Yes',y:pos/n}], {xLabel:'Churn', yLabel:'Share', yAxisDomain:[0,1]});
+        renderBar(UI.chartContract(), groupMean(rows,'Contract','Churn').map(o=>({x:o.group, y:o.rate})), {xLabel:'Contract', yLabel:'Churn rate', yAxisDomain:[0,1]});
+        renderBar(UI.chartInternet(), groupMean(rows,'InternetService','Churn').map(o=>({x:o.group, y:o.rate})), {xLabel:'InternetService', yLabel:'Churn rate', yAxisDomain:[0,1]});
+        renderBar(UI.chartSenior(), groupMean(rows,'SeniorCitizen','Churn').map(o=>({x:String(o.group), y:o.rate})), {xLabel:'SeniorCitizen', yLabel:'Churn rate', yAxisDomain:[0,1]});
+        renderBar(UI.chartPaperless(), groupMean(rows,'PaperlessBilling','Churn').map(o=>({x:o.group, y:o.rate})), {xLabel:'PaperlessBilling', yLabel:'Churn rate', yAxisDomain:[0,1]});
+        renderBar(UI.chartPayment(), groupMean(rows,'PaymentMethod','Churn').map(o=>({x:o.group, y:o.rate})), {xLabel:'PaymentMethod', yLabel:'Churn rate', yAxisDomain:[0,1]});
+
+        // Associations
+        const ybin = rows.map(r=> r.Churn==='Yes'?1:0 );
+        const assoc=[];
+        for(const c of numCols){
+          const x=rows.map(r=>Number(r[c])); assoc.push({Feature:c, Type:'numeric', Strength: Math.abs((()=>{
+            const n=x.length; let mx=0,my=0; for(let i=0;i<n;i++){ mx+=x[i]; my+=ybin[i]; } mx/=n; my/=n;
+            let sxx=0; for(let i=0;i<n;i++){ sxx+=(x[i]-mx)**2; } const sx=Math.sqrt(sxx/(n-1)||1e-12);
+            let cov=0; for(let i=0;i<n;i++){ cov+=(x[i]-mx)*(ybin[i]-my); } cov/= (n-1);
+            return cov/(sx*Math.sqrt(my*(1-my))||1e-12);
+          })())});
+        }
+        for(const c of catCols){
+          const x=rows.map(r=> String(r[c]));
+          assoc.push({Feature:c, Type:'categorical', Strength: Math.abs((()=>{
+            const cats=[...new Set(x)]; const n=x.length; const map=new Map(cats.map(c=>[c,{n0:0,n1:0}]));
+            for(let i=0;i<n;i++){ const o=map.get(x[i]); if(ybin[i]===1) o.n1++; else o.n0++; }
+            let chi2=0; const n1=ybin.reduce((s,t)=>s+t,0), n0=n-n1;
+            for(const {n0:n0c,n1:n1c} of map.values()){
+              const e1=(n1/n)*(n0c+n1c); const e0=(n0/n)*(n0c+n1c);
+              chi2 += ((n1c-e1)**2/(e1||1e-12)) + ((n0c-e0)**2/(e0||1e-12));
+            }
+            return Math.sqrt(chi2/(n*(Math.min(cats.length-1,1)||1)));
+          })())});
+        }
+        assoc.sort((a,b)=>b.Strength-a.Strength);
+        table(UI.assocTable(), assoc.map(o=>({Feature:o.Feature,Type:o.Type,Strength:o.Strength.toFixed(3)})), ['Feature','Type','Strength']);
+
+        // Segments
+        const binned=rows.map(r=>({key:`${r.Contract} | ${tenureBin(Number(r.tenure))}`, Churn:r.Churn}));
+        const agg=new Map();
+        binned.forEach(o=>{ const t=agg.get(o.key)||{n:0,s:0}; t.n++; t.s += (o.Churn==='Yes'?1:0); agg.set(o.key,t); });
+        const seg = Array.from(agg.entries()).map(([k,o])=>({Segment:k, Count:o.n, Rate:o.s/o.n})).filter(x=>x.Count>=200).sort((a,b)=>b.Rate-a.Rate);
+        table(UI.segmentsTable(), seg.map(s=>({Segment:s.Segment,Count:s.Count,'Churn rate':(s.Rate*100).toFixed(1)+'%'})), ['Segment','Count','Churn rate']);
+
+        // Imbalance & weights
+        const neg=n-pos; const w1=neg/(pos||1), w0=pos/(neg||1);
+        clear(UI.imbalance());
+        UI.imbalance().append(el('div',{},`Churn Yes: ${pos} (${(pos/n*100).toFixed(1)}%), No: ${neg} (${(neg/n*100).toFixed(1)}%).`));
+        UI.imbalance().append(el('div',{},`Recommended class weights → w1 (Yes): ${w1.toFixed(2)}, w0 (No): ${w0.toFixed(2)}.`));
+
+        // Summary & JSON
+        const box=UI.summary(); clear(box);
+        [ `Rows: ${n}, columns: ${cols.length}. Overall churn: ${(pos/n*100).toFixed(1)}%.`,
+          `Top categorical signals: ${assoc.filter(a=>a.Type==='categorical').slice(0,5).map(a=>a.Feature).join(', ')}`,
+          `Numeric signals: tenure, MonthlyCharges, TotalCharges.`,
+          `Weights: w1=${w1.toFixed(2)}, w0=${w0.toFixed(2)}.`
+        ].forEach(t=>box.append(el('div',{},'• ',t)));
+
+        UI.downloadJson().onclick=()=>{
+          const obj={rows:n,class_counts:{yes:pos,no:neg},assoc:assoc.slice(0,10),segments:seg.slice(0,10),num_summary:[]};
+          const s=JSON.stringify(obj,null,2);
+          const blob=new Blob([s],{type:'application/json'});
+          const url=URL.createObjectURL(blob); const a=document.createElement('a');
+          a.href=url; a.download='telco_eda_summary_v2.json'; document.body.appendChild(a); a.click(); URL.revokeObjectURL(url); a.remove();
+        };
+      }catch(e){
+        console.error(e); UI.loadStatus().textContent='Error ❌'; alert('CSV parse error: '+e.message);
+      }
+    });
+  </script>
+</body>
+</html>
